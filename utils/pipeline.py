@@ -6,41 +6,51 @@ import pandas as pd
 import numpy as np
 import statsmodels.api as sm
 
-# TODO
+# # TODO
 # def make_obj(counts=None, min_counts=10, min_genes=500):
 #
 #
-# def differentialExpression(adata, clustering='leiden', group=None, method='logreg'):
-#     if group is None:
-#         categories = adata.obs[clustering].cat.categories
-#         for cat in categories:
-#             sc.tl.rank_genes_groups(adata, clustering, groups=[cat])
-#     else:
+# # def differentialExpression(adata, clustering='leiden', group=None, method='logreg'):
+# #     if group is None:
+# #         categories = adata.obs[clustering].cat.categories
+# #         for cat in categories:
+# #             sc.tl.rank_genes_groups(adata, clustering, groups=[cat])
+# #     else:
 
 
 
-def expandedStats(adata):
+def expandedStats(adata, cluster_key='leiden'):
     """
     Appends expanded statistics to an AnnData object. Currently includes:
-    1. Ref_alpha = percentage of cells expressing a gene
+    1. alpha = percentage of cells expressing a gene
     2. Mean_expr = the mean expression of genes across all cells
     3. Mu_expr = the expression of genes across cells with non-zero expression
 
     :param adata: An AnnData object
     :return: AnnData object with expanded statistics
     """
-    # Compute ref_alpha
+    # Compute alpha
     if scipy.sparse.issparse(adata.raw.X):
         df = pd.DataFrame.sparse.from_spmatrix(adata.raw.X)
     else:
         df = pd.DataFrame(adata.raw.X)
-    ref_alpha = (df > 0).mean()
-    adata.raw.var['ref_alpha'] = ref_alpha.to_numpy()
-    # Compute mean
-    adata.raw.var['mean_expr'] = df.mean().to_numpy()
-    # Compute mu
-    adata.raw.var['mu_expr'] = np.divide(df.sum(), (df > 0).sum()).to_numpy()
+    # We need to replace the index on the dataframe to match the original
+    df.index = adata.obs.index
+    num_clusters = len(adata.obs[cluster_key].cat.categories)
+    for i in range(num_clusters):
+        # This is the dataframe of cells that belong to cluster i
+        sub_df = df[adata.obs[cluster_key] == i]
+        # And the dataframe of cells not in i, the reference group
+        ref_df = df[adata.obs[cluster_key] != i]
+        adata.raw.var['alpha_' + str(i)] = (sub_df > 0).mean().to_numpy()
+        adata.raw.var['ref_alpha_' + str(i)] = (ref_df > 0).mean().to_numpy()
+        adata.raw.var['mean_' + str(i)] = sub_df.mean().to_numpy()
+        adata.raw.var['ref_mean_' + str(i)] = ref_df.mean().to_numpy()
+        adata.raw.var['mu_' + str(i)] = sub_df[sub_df > 0].mean().to_numpy()
+        adata.raw.var['ref_mu_' + str(i)] = np.divide(ref_df.sum(), (ref_df > 0).sum()).to_numpy()
 
+    # We fill NaN values with 0 for simplicity
+    adata.raw.var.fillna(0)
     return adata
 
 def preprocessing(adata, normalize_total=True, target_sum=1e4, norm_method='log', min_mean=0.0125,
@@ -85,56 +95,146 @@ def preprocessing(adata, normalize_total=True, target_sum=1e4, norm_method='log'
     print('finished regressing and scaling values')
     return adata, bdata
 
-def computePVals(adata, method='logreg'):
-    n = len(adata.uns['rank_genes_groups']['scores'])
-    m = len(adata.uns['rank_genes_groups']['scores'][0])
+
+def geneSelection(adata, p_df, key='leiden', min_score=0, max_markers=None, cleaner=None):
+    """
+    This function selects the top marker genes for each cluster
+
+    :param adata: AnnData object
+    :param p_df: a dataframe containing the adjusted p-vals
+    :param key: the cluster key from which you get the clusters
+    :param min_score: The minimum score for a gene to be considered
+    :param max_markers: the maximum number of markers
+    :param cleaner: a cleaner functiona applied to gene names
+    :return:
+    """
+    # Append the cluster keys
+    num_clusters = len(adata.uns['rank_genes_groups']['scores'][0])
+    cluster_names = [key]
+    for i in range(num_clusters):
+        new_key = 'X' + str(i)
+        cluster_names.append(new_key)
+        adata.uns[new_key] = None
+
+    # Loop through each cluster and find which genes are relevant
+    genes_list = pd.DataFrame.from_records(adata.uns['rank_genes_groups']['names'])
+    scores = pd.DataFrame.from_records(adata.uns['rank_genes_groups']['scores'])
+    for j in range(num_clusters):
+        # All the genes associated with a cluster
+        cluster_genes = genes_list[str(j)]
+        relevant_genes = []
+        over_score = True
+        curr_gene = 0
+        while over_score:
+            # Retrieve the p_val, ref_alpha
+            gene_name = cluster_genes[curr_gene]
+            if (p_df[j][gene_name] < 0.05):
+                # Add the gene to the relevant_gene list
+                relevant_genes.append(gene_name)
+            curr_gene += 1
+            # In this case, we're below the minimum score so we can break the loop
+            if scores[str(j)][curr_gene] < min_score:
+                break
+        # Filter out the maximum number of markers
+        if max_markers is not None:
+            relevant_genes = relevant_genes[0:max_markers]
+        # Clean the genes if necessary
+        if cleaner is not None:
+            cleaned_genes = [cleaner(g) for g in relevant_genes]
+            relevant_genes = cleaned_genes
+        adata.uns['X' + str(j)] = relevant_genes
+
+    # Create a dataframe for the top marker genes for each cluster
+    marker_genes_df = pd.DataFrame(adata.uns['X0'])
+    for i in range(1, num_clusters):
+        marker_genes_df[i] = pd.DataFrame(adata.uns['X' + str(i)])
+
+    return marker_genes_df
+
+
+def computeMarkerGenes(adata, method='logreg', num_markers=None, ref_alpha=None,
+                       min_score=0, cluster_key='leiden', name_cleaner=None):
+    # Compute the marker genes from scanpy
+    sc.tl.rank_genes_groups(adata, cluster_key, method=method)
+
+    # Compute additional statistics
+    adata = expandedStats(adata)
+
+    # Compute p-vals
+    p_df = computePVals(adata, method, key=cluster_key)
+
+    # Select the appropriate genes and put them in the AnnData
+    marker_genes_df = geneSelection(adata, p_df, key=cluster_key, min_score=min_score, max_markers=num_markers,
+                                    cleaner=name_cleaner)
+
+    return marker_genes_df
+
+
+def computePVals(adata, method='logreg', key='leiden'):
+    """
+    This function computes the p-vals  from a differential expression test
+    :param adata: an AnnData object
+    :param method: the method by which we did the differential expression test
+    :param key: the key for the clusters
+    :return: a dataframe with the p-vals
+    """
+    num_genes = len(adata.uns['rank_genes_groups']['scores'])
+    num_clusters = len(adata.uns['rank_genes_groups']['scores'][0])
     if method == 'logreg':
         bdata = adata.raw.copy()
-        y_general = [int(v) for v in adata.obs['leiden']]
-        p_vals_adj = np.zeros((n, m))
+        # This
+        cluster_labels = [int(v) for v in adata.obs[key]]
+        # Instantiate the p-vals-adjusted matrix
+        p_vals_adj = np.zeros((num_genes, num_clusters))
         d = densify(bdata.X).toarray()
-        for i in range(m):
+        for i in range(num_clusters):
             # Create a y vector
-            y = np.zeros((len(y_general), 1))
-            for j in range(len(y_general)):
-                if y_general[j] == i:
+            print('check the code since you have a change')
+            # y = (cluster_labels == i).astype(int)
+            y = np.zeros((len(cluster_labels), 1))
+            for j in range(len(cluster_labels)):
+                if cluster_labels[j] == i:
                     y[j] = 1
-            for l in range(n):
+            # Compute the adjusted p_val for the gene and cluster pair
+            for l in range(num_genes):
                 model = sm.OLS(y, d[:, l])
                 model2 = model.fit()
                 p_vals_adj[l, i] = model2.pvalues
+        # Turn np array into a dataframe
         p_df = pd.DataFrame(p_vals_adj)
-        p_df.index = bdata.var.n_cells.index
+        p_df.index = bdata.var.index
     elif method == 'wilcoxon':
-        p_vals_adj = np.zeros((n, m))
+        p_vals_adj = np.zeros((num_genes, num_clusters))
         ps = adata.uns['rank_genes_groups']['pvals_adj']
-        for i in range(n):
-            for j in range(m):
+        for i in range(num_genes):
+            for j in range(num_clusters):
                 p_vals_adj[i, j] = ps[i][j]
         p_df = pd.DataFrame(p_vals_adj)
 
+    # Add the p-vals to the dataframe
+    adata.uns['p-vals adj'] = p_df
     return p_df
 
 
-
 # TODO
-# def run_scanpy(name, obj=None, counts=None, min_counts=5, min_genes=200, num_pcs=0, write_out=False):
-#     # Check input arguments
-#
-#     # Make singlecell object
-#     if obj is not None:
-#         obj = make_obj(counts=counts, min_counts=min_counts, min_genes=min_genes)
-#
-#     # Batch correction with variable genes
-#
-#     # Number of significant PCs
-#
-#     # Do PCA
-#
-#     # Fix duplicates
-#
-#     # Regress out PCs
-#
-#     # TSNE
-#
-#     # Cluster cells and run DE tests
+def run_scanpy(obj, counts=None, min_counts=5, min_genes=200, num_pcs=0, write_out=False,
+               num_neighbors=100, DE_method='logreg', num_marker_genes=15):
+    # Check input arguments
+
+    # Preprocessing step
+    val = preprocessing(obj, min_cells=min_counts, min_genes=min_genes)
+    adata = val[0]
+    bdata = val[1]
+
+    # Do PCA
+    sc.tl.pca(adata, svd_solver='arpack')
+
+    # Neighborbood graph: computing, embedding, and clustering
+    sc.pp.neighbors(adata,n_neighbors=num_neighbors, n_pcs = num_pcs)
+    sc.tl.umap(adata)
+    sc.tl.leiden(adata)
+
+    # Find the marker genes
+    marker_genes_df = computeMarkerGenes(adata, DE_method, num_markers=num_marker_genes)
+
+    return marker_genes_df
