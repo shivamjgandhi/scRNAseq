@@ -1,37 +1,13 @@
-import scanpy as sc
-import pandas as pd
 import os
 import json
-import numpy as np
+import pandas as pd
 import imageio
+import numpy as np
+import scanpy as sc
 
-import rpy2.robjects as robjects
-from rpy2.robjects import pandas2ri
-from rpy2.robjects.conversion import localconverter
-
-
-def callR(function_path, func_name, obj, args):
-    r = robjects.r
-    r['source'](function_path)
-
-    # Loading the function we have defined in R
-    func = robjects.globalenv[func_name]
-
-    # Convert it into r object for passing into r function
-    with localconverter(robjects.default_converter + pandas2ri.converter):
-        obj_r = robjects.conversion.py2rpy(obj)
-
-    # Invoking the R function and getting the result
-    df_result_r = func(obj_r, args)
-
-    # Convert back into pd dataframe
-    with localconverter(robjects.default_converter + pandas2ri.converter):
-        pd_from_r_df = robjects.conversion.rpy2py(df_result_r)
-
-    return pd_from_r_df
-
-
+# Let's import and assemble Sathish's dataset
 def constructAnnData(folder):
+    # Get the annData object
     for _, _, files in os.walk(folder):
         for file in files:
             if file.endswith('.h5'):
@@ -60,3 +36,31 @@ def constructAnnData(folder):
     adata.uns['image_lowres'] = img
 
     return adata
+
+
+# Now that we've clustered, let's send it back to the original space
+def sendToOriginalSpace(total_data, adata_list):
+    marks = []
+    for i, adata in enumerate(adata_list):
+        marks.append(adata.n_obs)
+        adata_list[i].obs['total_clusters'] = pd.Categorical(['0'] * adata.n_obs,
+                                                             total_data.obs['clusters'].cat.categories,
+                                                             ordered=False)
+
+    def Cumulative(lists):
+        length = len(lists)
+        cu_list = [sum(lists[0:x:1]) for x in range(0, length + 1)]
+        return cu_list[1:]
+
+    marks = Cumulative(marks)
+    marks.insert(0, 0)
+
+    j = 0
+    batch = []
+    for i in range(total_data.n_obs):
+        batch.append(j)
+        if i >= marks[j + 1]:
+            j += 1
+        adata_list[j].obs['total_clusters'][i - marks[j]] = total_data.obs['clusters'][i]
+
+    return adata_list

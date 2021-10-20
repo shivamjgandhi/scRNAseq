@@ -3,12 +3,16 @@ import scanpy as sc
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
+from sklearn.cluster import KMeans
+from sklearn import metrics
+from scipy.spatial.distance import cdist
+import scipy
 
 
 # def volcanoPlot(df):
 #     visuz.gene_exp.volcano(df=df, lfc='log2FC', pv='p-value')
 
-def heatMap(df, yticklabels=None, xlabel=None, ylabel=None, title=None,
+def heatMap(df, yticklabels='auto', xlabel=None, ylabel=None, title=None,
             colorbar_label=None):
     """
     This function creates a heatmap from seaborn's package
@@ -67,5 +71,49 @@ def pValHeatMap(ps, clip=None, filter=0.1, log_base=10, label_cleaner=None,
     ax = heatMap(ps, yticklabels=labels, xlabel=xlabel, ylabel=ylabel, title=title,
                  colorbar_label=colorbar_label)
 
+
+def quickHist(data):
+    data = np.asarray(data)
+    nbins = int(len(data)/100)
+    x_min = np.min(data)
+    x_max = np.max(data)
+    plt.hist(data, bins=nbins, range=(x_min, x_max))
+    plt.show()
+
+
+def quickStats(data):
+    quickHist(data)
+
+
+def quickScatter(df, x, y):
+    xvec = np.array(df[x])
+    yvec = np.array(df[y])
+    ax = sns.scatterplot(xvec, yvec)
+    ax.set(xlabel=x, ylabel=y)
     return ax
 
+
+def quickKMeans(model, pts):
+    y_kmeans = model.predict(pts)
+    # Create a scatter plot showing the spatial labels
+    plt.scatter(pts[:, 0], pts[:, 1], c=y_kmeans, cmap='viridis')
+    centers = model.cluster_centers_
+    plt.scatter(centers[:, 0], centers[:, 1], c='black', s=200, alpha=0.5)
+
+
+def kmeansSeparation(cluster_centers, mult):
+    # Plot each of the cluster centers
+    work = mult.copy()
+    for i in range(len(cluster_centers)):
+        work[int(cluster_centers[i, 1])-10: int(cluster_centers[i, 1])+10, int(cluster_centers[i, 0])-10:int(cluster_centers[i, 0])+10] = 20
+    ones = np.where(work == 1)
+    for i in range(len(ones[0])):
+        pt = [ones[1][i], ones[0][i]]
+        dists = np.linalg.norm(cluster_centers - pt, axis=1)
+        clus = np.argmin(dists)
+        work[pt[1], pt[0]] = 3*(clus + 1)
+    plt.imshow(work)
+    plt.show()
+
+
+# def bdryHull(bdry, hull):

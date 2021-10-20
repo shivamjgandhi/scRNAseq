@@ -6,18 +6,6 @@ import pandas as pd
 import numpy as np
 import statsmodels.api as sm
 
-# # TODO
-# def make_obj(counts=None, min_counts=10, min_genes=500):
-#
-#
-# # def differentialExpression(adata, clustering='leiden', group=None, method='logreg'):
-# #     if group is None:
-# #         categories = adata.obs[clustering].cat.categories
-# #         for cat in categories:
-# #             sc.tl.rank_genes_groups(adata, clustering, groups=[cat])
-# #     else:
-
-
 
 def expandedStats(adata, cluster_key='leiden'):
     """
@@ -30,27 +18,49 @@ def expandedStats(adata, cluster_key='leiden'):
     :return: AnnData object with expanded statistics
     """
     # Compute alpha
-    if scipy.sparse.issparse(adata.raw.X):
-        df = pd.DataFrame.sparse.from_spmatrix(adata.raw.X)
-    else:
-        df = pd.DataFrame(adata.raw.X)
-    # We need to replace the index on the dataframe to match the original
-    df.index = adata.obs.index
-    num_clusters = len(adata.obs[cluster_key].cat.categories)
-    for i in range(num_clusters):
-        # This is the dataframe of cells that belong to cluster i
-        sub_df = df[adata.obs[cluster_key] == i]
-        # And the dataframe of cells not in i, the reference group
-        ref_df = df[adata.obs[cluster_key] != i]
-        adata.raw.var['alpha_' + str(i)] = (sub_df > 0).mean().to_numpy()
-        adata.raw.var['ref_alpha_' + str(i)] = (ref_df > 0).mean().to_numpy()
-        adata.raw.var['mean_' + str(i)] = sub_df.mean().to_numpy()
-        adata.raw.var['ref_mean_' + str(i)] = ref_df.mean().to_numpy()
-        adata.raw.var['mu_' + str(i)] = sub_df[sub_df > 0].mean().to_numpy()
-        adata.raw.var['ref_mu_' + str(i)] = np.divide(ref_df.sum(), (ref_df > 0).sum()).to_numpy()
+    if hasattr(adata.raw, 'X'):
+        if scipy.sparse.issparse(adata.raw.X):
+            df = pd.DataFrame.sparse.from_spmatrix(adata.raw.X)
+        else:
+            df = pd.DataFrame(adata.raw.X)
+        # We need to replace the index on the dataframe to match the original
+        df.index = adata.obs.index
+        num_clusters = len(adata.obs[cluster_key].cat.categories)
+        for i in range(num_clusters):
+            # This is the dataframe of cells that belong to cluster i
+            sub_df = df[adata.obs[cluster_key] == i]
+            # And the dataframe of cells not in i, the reference group
+            ref_df = df[adata.obs[cluster_key] != i]
+            adata.raw.var['alpha_' + str(i)] = np.nan_to_num((sub_df > 0).mean())
+            adata.raw.var['ref_alpha_' + str(i)] = np.nan_to_num((ref_df > 0).mean().to_numpy())
+            adata.raw.var['mean_' + str(i)] = np.nan_to_num(sub_df.mean().to_numpy())
+            adata.raw.var['ref_mean_' + str(i)] = np.nan_to_num(ref_df.mean().to_numpy())
+            adata.raw.var['mu_' + str(i)] = np.nan_to_num(sub_df[sub_df > 0].mean().to_numpy())
+            adata.raw.var['ref_mu_' + str(i)] = np.nan_to_num(np.divide(ref_df.sum(), (ref_df > 0).sum()).to_numpy())
 
-    # We fill NaN values with 0 for simplicity
-    adata.raw.var.fillna(0)
+        # We fill NaN values with 0 for simplicity
+        adata.raw.var.fillna(0)
+    else:
+        if scipy.sparse.issparse(adata.X):
+            df = pd.DataFrame.sparse.from_spmatrix(adata.X)
+        else:
+            df = pd.DataFrame(adata.X)
+        # We need to replace the index on the dataframe to match the original
+        df.index = adata.obs.index
+        num_clusters = len(adata.obs[cluster_key].cat.categories)
+        for i in range(num_clusters):
+            i = str(i)
+            # This is the dataframe of cells that belong to cluster i
+            sub_df = df[adata.obs[cluster_key] == i]
+            # And the dataframe of cells not in i, the reference group
+            ref_df = df[adata.obs[cluster_key] != i]
+            adata.var['alpha_' + str(i)] = np.nan_to_num((sub_df > 0).mean())
+            adata.var['ref_alpha_' + str(i)] = np.nan_to_num((ref_df > 0).mean().to_numpy())
+            adata.var['mean_' + str(i)] = np.nan_to_num(sub_df.mean().to_numpy())
+            adata.var['ref_mean_' + str(i)] = np.nan_to_num(ref_df.mean().to_numpy())
+            adata.var['mu_' + str(i)] = np.nan_to_num(sub_df[sub_df > 0].mean().to_numpy())
+            adata.var['ref_mu_' + str(i)] = np.nan_to_num(np.divide(ref_df.sum(), (ref_df > 0).sum()).to_numpy())
+
     return adata
 
 def preprocessing(adata, normalize_total=True, target_sum=1e4, norm_method='log', min_mean=0.0125,
@@ -105,7 +115,7 @@ def geneSelection(adata, p_df, key='leiden', min_score=0, max_markers=None, clea
     :param key: the cluster key from which you get the clusters
     :param min_score: The minimum score for a gene to be considered
     :param max_markers: the maximum number of markers
-    :param cleaner: a cleaner functiona applied to gene names
+    :param cleaner: a cleaner function applied to gene names
     :return:
     """
     # Append the cluster keys
@@ -158,7 +168,7 @@ def computeMarkerGenes(adata, method='logreg', num_markers=None, ref_alpha=None,
     sc.tl.rank_genes_groups(adata, cluster_key, method=method)
 
     # Compute additional statistics
-    adata = expandedStats(adata)
+    adata = expandedStats(adata, cluster_key=cluster_key)
 
     # Compute p-vals
     p_df = computePVals(adata, method, key=cluster_key)
@@ -181,7 +191,10 @@ def computePVals(adata, method='logreg', key='leiden'):
     num_genes = len(adata.uns['rank_genes_groups']['scores'])
     num_clusters = len(adata.uns['rank_genes_groups']['scores'][0])
     if method == 'logreg':
-        bdata = adata.raw.copy()
+        if hasattr(adata.raw, 'X'):
+            bdata = adata.raw.copy()
+        else:
+            bdata = adata.copy()
         # This
         cluster_labels = [int(v) for v in adata.obs[key]]
         # Instantiate the p-vals-adjusted matrix
@@ -230,7 +243,7 @@ def run_scanpy(obj, counts=None, min_counts=5, min_genes=200, num_pcs=0, write_o
     sc.tl.pca(adata, svd_solver='arpack')
 
     # Neighborbood graph: computing, embedding, and clustering
-    sc.pp.neighbors(adata,n_neighbors=num_neighbors, n_pcs = num_pcs)
+    sc.pp.neighbors(adata, n_neighbors=num_neighbors, n_pcs=num_pcs)
     sc.tl.umap(adata)
     sc.tl.leiden(adata)
 

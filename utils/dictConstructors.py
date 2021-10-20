@@ -1,4 +1,6 @@
 import scanpy as sc
+import pandas as pd
+import numpy as np
 
 def pathwayToGene(pathway_names, ko_to_path, GCF_to_K0, gene_df):
     """
@@ -64,3 +66,39 @@ def prefixToGene(gene_df, filter=0):
     prefix2genes = prefix2genes_large
 
     return prefix2genes
+
+def complexTxtImport(file):
+    """
+    This function reads in files that simple pandas.read_csv cannot handle correctly due to
+    messy commas
+    """
+    f = open(file)
+    lines = f.read().split('\n')
+    lines = [line for line in lines if len(line.split('\t')) == 2]
+    df = pd.DataFrame(columns=['Mouse', 'Human'])
+
+    for line in lines:
+        split_line = pd.Series(line.split('\t'))
+        df = df.append({'Mouse': split_line[0], 'Human': split_line[1]}, ignore_index=True)
+
+    return df
+
+
+def prepCIBERSORT(ad_sc, cell_labels, adata):
+    ad_sc.obs['clusters'] = list(cell_labels[1])
+    # Now create the dataset for the signature matrix
+    cell_types = list(set(cell_labels[1]))
+    signature_mat = pd.DataFrame(0, index=ad_sc.var_names, columns=cell_types)
+    shared_genes = list((set(signature_mat.index) & set(adata.var_names)))
+    for i, ct in enumerate(cell_types):
+        signature_mat[ct] = np.asarray(ad_sc[ad_sc.obs['clusters'] == ct].X.mean(axis=0).T)
+    columns = signature_mat.columns
+    new_columns = [s.replace('+', '') for s in columns]
+    signature_mat.columns = new_columns
+    signature_mat = np.exp(signature_mat)
+    signature_mat = signature_mat.loc[shared_genes]
+    ad_sc.uns['cell type signatures'] = signature_mat
+
+    # Save the file
+    signature_mat.to_csv('out.txt', sep='\t')
+
