@@ -72,9 +72,10 @@ def pValHeatMap(ps, clip=None, filter=0.1, log_base=10, label_cleaner=None,
                  colorbar_label=colorbar_label)
 
 
-def quickHist(data):
+def quickHist(data, nbins=None):
     data = np.asarray(data)
-    nbins = int(len(data)/100)
+    if not nbins:
+        nbins = int(len(data)/100)
     x_min = np.min(data)
     x_max = np.max(data)
     plt.hist(data, bins=nbins, range=(x_min, x_max))
@@ -116,4 +117,67 @@ def kmeansSeparation(cluster_centers, mult):
     plt.show()
 
 
-# def bdryHull(bdry, hull):
+def scatterplot(x, y, col=None, lab=None, nlab=None, lab_size=12, xlab='', ylab='', font_size=14, w=10, h=8, title=None):
+    
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    import seaborn as sns
+    from adjustText import adjust_text
+    
+    plt.rcParams['figure.figsize'] = [w, h]
+    sns.set_style('white')
+    sns.set_context('notebook', rc={'font.size':lab_size, 'axes.labelsize':font_size})    
+    
+    # fix input arguments
+    x = np.array(x)
+    y = np.array(y)
+    if lab is not None:
+        lab = np.array(lab, dtype=str)
+    
+    # select labels
+    if lab is not None:
+        if nlab is not None:
+            l = np.copy(lab)
+            l[:] = ''
+            g = pd.cut(x, bins=10)
+            for gi in g.unique():
+                i = np.where(g == gi)[0]
+                j = np.argsort(y[i])[-int(nlab/10):]
+                l[i[j]] = lab[i[j]]
+    
+    # plot data
+    plt.scatter(x, y, color=col)
+    if lab is not None:
+        text = [plt.text(x[i], y[i], l[i], ha='center', va='center') for i in range(len(x)) if l[i] != '']
+        adjust_text(text)
+    
+    # format plot
+    plt.xlabel(xlab)
+    plt.ylabel(ylab)
+    if title:
+        plt.title(title)
+
+    sns.despine()
+
+
+def volcanoPlot(select_clus, title=None, genes=None, fileName=None):
+    # Create volc_df
+    volc_df = pd.DataFrame(index = select_clus.var_names, columns=['-log10p', 'scores'])
+
+    scores = pd.DataFrame(select_clus.uns['logreg coeffs'])
+    scores.index = list(select_clus.var_names)
+    volc_df['scores'] = np.clip(scores[0], -4, 4)
+    volc_df['-log10p'] = np.clip(-1*np.log10(select_clus.uns['p-vals adj'].iloc[:, 0]), 0, 70)
+
+    if genes:
+        volc_df = volc_df.loc[genes, :]
+
+    # Plot volc_df
+    scatter = scatterplot(volc_df['scores'], volc_df['-log10p'], col='#cccccc', lab=volc_df.index, nlab=50, xlab='coefficient', ylab='-log10(p-value)', 
+        title=title)
+    
+    if fileName:
+        plt.savefig(fileName)
+
+    plt.show()
+    return scatter

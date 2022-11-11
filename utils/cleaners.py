@@ -9,7 +9,6 @@ import rpy2.robjects as robjects
 from rpy2.robjects import pandas2ri
 from rpy2.robjects.conversion import localconverter
 
-
 def callR(function_path, func_name, obj, args):
     r = robjects.r
     r['source'](function_path)
@@ -60,3 +59,33 @@ def constructAnnData(folder):
     adata.uns['image_lowres'] = img
 
     return adata
+
+
+def standardizeNames(theta, adata_list, names):
+    # Start by figuring out which samples are used
+    names = [val.replace('-', '_') for val in names]
+
+    # Create a total data object that contains all of the correct samples being used
+    # rename the indices
+    sample = names[0]
+    adata = adata_list[0].copy()
+    obs_names = [(sample + '.' + val).replace('-1', '') for val in adata.obs_names]
+    adata.obs_names = obs_names
+    tot_data = adata
+
+    for sample in names[1:]:
+        adata = adata_list[names.index(sample)].copy()
+        obs_names = [(sample + '.' + val).replace('-1', '') for val in adata.obs_names]
+        adata.obs_names = obs_names
+        tot_data = tot_data.concatenate(adata, index_unique=None)
+
+    # Change the names of theta
+    new_ind = [val.replace('-', '_') for val in theta.index]
+    theta.index = new_ind
+
+    # Now sort everything based on theta since tot_data and theta share the same names
+    i = sorted(theta.index)
+    theta = theta.loc[i]
+    tot_data = tot_data[i, :]
+
+    return tot_data, theta 

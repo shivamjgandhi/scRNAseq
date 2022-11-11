@@ -3,7 +3,7 @@ from statsmodels.stats.multitest import multipletests
 import pandas as pd
 import numpy as np
 
-def FisherTest(gene_set1, gene_set2, gene_universe):
+def FisherTest(gene_set1, gene_set2, gene_universe, alternative='greater'):
     """
     This function runs a fisher test on two gene sets
     :param gene_set1:
@@ -16,7 +16,7 @@ def FisherTest(gene_set1, gene_set2, gene_universe):
     plus_minus = len(list(set(gene_set2) - set(gene_set1)))
     minus_minus = len(set(gene_universe) - set(gene_set1) - set(gene_set2))
     table = np.array([[plus_plus, plus_minus], [minus_plus, minus_minus]])
-    oddsr, p = fisher_exact(table)
+    oddsr, p = fisher_exact(table, alternative=alternative)
     return oddsr, p
 
 

@@ -142,12 +142,28 @@ def plotCellTypeSignatures(adata, signature_mat, img, spot_size, folder=None, im
 
 def aBybPlot(a, b, adata_list, color,
              include_bars=True, include_labels=True, size=20,
-             shared_legend=False, shared_title=True):
+             shared_legend=False, shared_title=True, titles=None,
+             hide_zeros=True):
+
+    # Create the subplots and a list for all the legends
     fig, axs = plt.subplots(a, b, figsize=(size, size), constrained_layout=True)
     legends = []
+
+    # Go through each AnnData object and add it into the list
     for i, adata in enumerate(adata_list):
         if (color in adata.var_names) or (color in adata.obs.columns):
-            sc.pl.spatial(adata_list[i], img=adata_list[i].uns['image_lowres'], spot_size=4, color=color, ax=axs[int((i/b)), int((i % b))], show=False)
+            copy = adata.copy()
+            # if perturb_zeros:
+            #     if (copy[:, color].X == 0).sum() == len(copy.obs):
+            #         # Randomly turn a zero in the dataset into 0.1
+            #         copy.X[0, np.where(copy.var_names == color)[0][0]] = 0.001
+            if hide_zeros == True:
+                if (copy[:, color].X == 0).sum() != len(copy.obs):
+                    sc.pl.spatial(copy, img=adata_list[i].uns['image_lowres'], spot_size=4, color=color, ax=axs[int((i/b)), int((i % b))], show=False, color_map='viridis')
+            elif not hide_zeros:
+                sc.pl.spatial(copy, img=adata_list[i].uns['image_lowres'], spot_size=4, color=color, ax=axs[int((i/b)), int((i % b))], show=False, color_map='viridis')
+
+            # See if we need to remove the legend bars
             if not include_bars:
                 _lg = axs[int(i/b), int(i % b)].get_legend()
                 if _lg:
@@ -155,12 +171,20 @@ def aBybPlot(a, b, adata_list, color,
                     _lg.remove()
                 else:
                     fig.delaxes(fig.axes[-1])
+
+            # See if we want to remove the x and y labels
             if not include_labels:
                 axs[int(i/b), int(i % b)].set_xlabel('')
                 axs[int(i/b), int(i % b)].set_ylabel('')
+
+            # If it's a shared title, remove the titles from all of the sub images
             if shared_title:
                 old_title = axs[int(i/b), int(i % b)].get_title()
                 axs[int(i/b), int(i % b)].set_title('')
+
+            # We can set a list of titles for each image
+            if titles:
+                axs[int(i/b), int(i % b)].set_title(titles[i])
 
     if shared_legend:
         leg = axs[0, 0].get_legend_handles_labels()
@@ -171,3 +195,15 @@ def aBybPlot(a, b, adata_list, color,
             fig.suptitle(shared_title, fontsize=16)
         else:
             fig.suptitle(old_title, fontsize=16)
+
+
+def plotSubset(adata, points):
+    # Get the bounds on the picture
+    max_bounds = adata.obsm['spatial'].max(axis=0)
+    min_bounds = adata.obsm['spatial'].min(axis=0)
+
+    # Add some padding to the bounds
+    coords = (min_bounds[0]-10, max_bounds[0]+10, min_bounds[1]-10, max_bounds[1]+10)
+
+    # Send the coordinates in via the crop_coord input to the spatial
+    sc.pl.spatial(adata[points], img=adata.uns['image_lowres'], spot_size=4, color='follicle', crop_coord=coords)

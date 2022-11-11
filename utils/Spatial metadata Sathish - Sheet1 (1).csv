@@ -1,0 +1,21 @@
+Visium barcode,Patient ,SampleID,Single Cell,Sample name,Disease Label
+V10S15-055_C,144119_N,144119 Normal SB (T1) 1/25/21,N19_epi; N19_imu,144119 Normal,Adjacent
+V10S15-055_D,144119_F,144119 Fibrotic T1 stricture 1/25/21,F19_epi; F19_imu,144119 Fibrotic,Fibrotic
+V10S15-055_A,143371_N,143371 Normal 2/16/21,N23_epi; N23_imu,143371 Normal,Adjacent
+V10S15-055_B,144371_F,143371 Fibrotic S2 2/16/21,I23_epi; I23_imu,143371 Fibrotic S2,Fibrotic
+V11Y24-011_C,120359_N,120359_N,Nuc-data pending,120359 Normal,Adjacent
+V11Y24-011_D,120359_F,120359_F,Nuc-data pending,120359 Fibrotic,Fibrotic
+V11Y24-011_A,111891_N,111891_2_24_21,N24_epi; N24_imu,11891 Normal,Disease Control
+V10A14-143_A,117351_N,117351_N17_V10A14_143_A,N17_epi; N17_imu,117351 Normal ileum,Adjacent
+V10A14-143_D,117351_I,117351_I17_left_V10A14_143_D,F17B_epi; F17B_imu,117351 Inflamed mucosa,Fibrotic
+V10A14-143_C,117351_F,117351_F17_lower_V10A14_143_C,F17_epi; F17_imu,"117351 Fibrotic ileocecal valve, upper",Fibrotic
+V10A14-143_B,117351_F,117351_F17_upper_V10A14_143_B,F17_epi; F17_imu,"117351 Fibrotic ileocecal valve, lower",Fibrotic
+V11Y24-011_B,116040_N,116040,Nuc-data pending,116040 Normal,Disease Control
+V10S15-054_C,112584_N,112584 Normal 3/11/21,N25_epi; N25_imu,112584 Normal,Adjacent
+V10S15-054_D,112584_F,112584 Distal Fibrotic 3/11/21,F25_epi; F25_imu,112584 Fibrotic,Fibrotic
+V11Y24-010_B,110748_N,110748_N,N20_epi; N20_imu,110748 Normal,Adjacent
+V11Y24-010_A,110748_N,110748_F,F20A_epi; F20B_epi; F20M; F20MD,110748 Fibrotic,Fibrotic
+V10S15-054_A,110201_N,110201 Normal 1/19/21,N18_epi; N18_imu,110201 Normal,Adjacent
+V10S15-054_B,110201_F,110201 Fibrotic (start of stricture) 1/19/21,F18_epi; F18_imu,110201 Fibrotic (start of stricture),Fibrotic
+V11Y24-010_C,106392_N,Normal A,Nuc-data pending,106392 Normal,Adjacent
+V11Y24-010_D,106392_F,Stricture C,Nuc-data pending,106392 Fibrotic,Fibrotic
